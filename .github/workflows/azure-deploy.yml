@@ -27,6 +27,8 @@ jobs:
       uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
+        environment: azurecloud
+        auth-type: service_principal
 
     - name: Deploy to Azure App Service
       uses: azure/webapps-deploy@v2
