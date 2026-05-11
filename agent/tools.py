@@ -49,8 +49,46 @@ def generate_answer(context, query):
     response = chat_with_context("\n\n".join(context_texts), query)
     return response
 
-def create_checklist(context):
-    return "Checklist:\n- Step 1\n- Step 2"
+def create_checklist(context, query):
+    if not context:
+        return "⚠️ No relevant policy content found to generate checklist."
 
-def draft_email(context):
-    return "Email drafted using policy context."
+    context_texts = []
+    for item in context:
+        if isinstance(item, dict):
+            context_texts.append(f"{item['text']}")
+
+    prompt = """
+You are an enterprise compliance assistant.
+
+Using ONLY the provided policy context:
+- Create a clear, step-by-step compliance checklist
+- Include mandatory actions and approvals
+- Do not add steps not supported by the policy
+
+Policy Context:
+""" + "\n\n".join(context_texts)
+
+    return chat_with_context(prompt, query)
+
+def draft_email(context, query):
+    if not context:
+        return "⚠️ No relevant policy content found to draft email."
+
+    context_texts = []
+    for item in context:
+        if isinstance(item, dict):
+            context_texts.append(f"{item['text']}")
+
+    prompt = """
+You are an enterprise compliance assistant.
+
+Using ONLY the provided policy context:
+- Draft a professional corporate email
+- Explain required actions clearly
+- Use formal and concise language
+
+Policy Context:
+""" + "\n\n".join(context_texts)
+
+    return chat_with_context(prompt, query)
