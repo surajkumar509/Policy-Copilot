@@ -40,8 +40,13 @@ user_query = st.text_area("Enter your policy question or request:")
 if st.button("Submit"):
     if user_query.strip():
         with st.spinner("Thinking..."):
-            response = agent_run(user_query)
-        st.subheader("✅ Response")
+            response, source = agent_run(user_query)
+     
+        # ✅ Decide indicator
+        dot = "☑️" if source != "API_CALL" else "✅"
+        print("Source", source, dot)  # Debug: check source and indicator
+        # ✅ Show indicator (clean, no text)
+        st.write(dot, "Response")           
         st.write(response)
     else:
         st.warning("Please enter a query.")

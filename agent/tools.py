@@ -9,6 +9,10 @@ RESPONSE_CACHE = {}
 # Semantic cache (list of embeddings)
 SEMANTIC_CACHE = []
 
+RESPONSE_CACHE.clear()
+SEMANTIC_CACHE.clear()
+
+
 def normalize_query(query):
     q = query.lower().strip()
 
@@ -88,6 +92,48 @@ def find_similar_query(query, intent, threshold=0.75):
 
 def generate_answer(context, query):
 
+    # ✅ Normalize query for exact cache
+    normalized = normalize_query(query)
+    cache_key = f"ANSWER::{normalized}"
+
+    print("\n🔎 Incoming Query:", query)
+
+    # ✅ 1. Exact cache check
+    if cache_key in RESPONSE_CACHE:
+        print("✅ Exact cache HIT (No API call)")
+        return RESPONSE_CACHE[cache_key], "EXACT_CACHE"
+
+    # ✅ 2. Semantic cache check
+    semantic_result = find_similar_query(query, "ANSWER")
+    if semantic_result:
+        print("✅ Semantic cache HIT (No API call)")
+        return semantic_result, "SEMANTIC_CACHE"
+
+    print("🚀 Cache MISS → Calling Azure OpenAI API")
+
+    # ✅ 3. Guard: no context
+    if not context:
+        return "⚠️ No relevant policy documents found.", "API_CALL"
+
+    # ✅ 4. Prepare context for RAG
+    context_texts = [
+        f"{item['source']}\n{item['text']}"
+        for item in context
+        if isinstance(item, dict)
+    ]
+
+    # ✅ 5. Azure OpenAI call (only here)
+    response = chat_with_context("\n\n".join(context_texts), query)
+
+    print("✅ Azure OpenAI API CALL COMPLETED")
+
+    # ✅ 6. Store in caches
+    RESPONSE_CACHE[cache_key] = response
+    store_semantic_cache(query, response, "ANSWER")
+
+    # ✅ 7. Always return tuple
+    return response, "API_CALL"
+
     normalized = normalize_query(query)
     cache_key = f"ANSWER::{normalized}"
 
@@ -126,45 +172,74 @@ def generate_answer(context, query):
     return response
 
 def create_checklist(context, query):
-    if not context:
-        return "⚠️ No relevant policy content found to generate checklist."
 
-    context_texts = []
-    for item in context:
-        if isinstance(item, dict):
-            context_texts.append(f"{item['text']}")
+    normalized = normalize_query(query)
+    cache_key = f"CHECKLIST::{normalized}"
+
+    if cache_key in RESPONSE_CACHE:
+        return RESPONSE_CACHE[cache_key], "EXACT_CACHE"
+
+    semantic_result = find_similar_query(query, "CHECKLIST")
+    if semantic_result:
+        return semantic_result, "SEMANTIC_CACHE"
+
+    if not context:
+        return "⚠️ No relevant policy content found.", "API_CALL"
+
+    context_texts = [item["text"] for item in context if isinstance(item, dict)]
 
     prompt = """
-You are an enterprise compliance assistant.
-
-Using ONLY the provided policy context:
-- Create a clear, step-by-step compliance checklist
-- Include mandatory actions and approvals
-- Do not add steps not supported by the policy
+Create a clear, step-by-step compliance checklist using ONLY the policy context below.
+Limit the checklist to a maximum of 5 steps.
 
 Policy Context:
 """ + "\n\n".join(context_texts)
 
-    return chat_with_context(prompt, query)
+    response = chat_with_context(prompt, query)
+
+    RESPONSE_CACHE[cache_key] = response
+    store_semantic_cache(query, response, "CHECKLIST")
+
+    return response, "API_CALL"
 
 def draft_email(context, query):
-    if not context:
-        return "⚠️ No relevant policy content found to draft email."
 
-    context_texts = []
-    for item in context:
-        if isinstance(item, dict):
-            context_texts.append(f"{item['text']}")
+    normalized = normalize_query(query)
+    cache_key = f"EMAIL::{normalized}"
+
+    if cache_key in RESPONSE_CACHE:
+        return RESPONSE_CACHE[cache_key], "EXACT_CACHE"
+
+    semantic_result = find_similar_query(query, "EMAIL")
+    if semantic_result:
+        return semantic_result, "SEMANTIC_CACHE"
+
+    if not context:
+        return "⚠️ No relevant policy content found.", "API_CALL"
+
+    context_texts = [item["text"] for item in context if isinstance(item, dict)]
 
     prompt = """
-You are an enterprise compliance assistant.
-
-Using ONLY the provided policy context:
-- Draft a professional corporate email
-- Explain required actions clearly
-- Use formal and concise language
+Draft a professional corporate email using ONLY the policy context below.
+Keep the email concise (under 150 words).
 
 Policy Context:
 """ + "\n\n".join(context_texts)
 
-    return chat_with_context(prompt, query)
+    response = chat_with_context(prompt, query)
+
+    RESPONSE_CACHE[cache_key] = response
+    store_semantic_cache(query, response, "EMAIL")
+
+    return response, "API_CALL"
+    
+def detect_intent(query):    
+    q = query.lower()
+
+    if any(word in q for word in ["checklist", "steps", "procedure", "process"]):
+        return "CHECKLIST"
+
+    if any(word in q for word in ["email", "mail", "draft"]):
+        return "EMAIL"
+
+    return "ANSWER"
