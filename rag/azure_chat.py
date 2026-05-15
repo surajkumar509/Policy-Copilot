@@ -49,7 +49,8 @@ def chat_with_context(context: str, user_query: str) -> str:
         response = client.chat.completions.create(
             model=os.environ["AZURE_OPENAI_CHAT_DEPLOYMENT"],
             messages=messages,
-            temperature=0.2
+            temperature=0.2,
+            max_tokens=300
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
