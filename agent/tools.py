@@ -2,6 +2,9 @@ from rag.azure_embeddings import embed_text
 import rag.shared_store as shared_store
 from rag.azure_chat import chat_with_context
 import numpy as np
+import time
+import random
+
 
 # Exact cache (simple dictionary)
 RESPONSE_CACHE = {}
@@ -9,9 +12,45 @@ RESPONSE_CACHE = {}
 # Semantic cache (list of embeddings)
 SEMANTIC_CACHE = []
 
-RESPONSE_CACHE.clear()
-SEMANTIC_CACHE.clear()
+# ✅ Track last clear time
+LAST_CACHE_CLEAR = time.time()
+CACHE_TTL = 60
 
+def auto_clear_cache():
+    global LAST_CACHE_CLEAR
+
+    current_time = time.time()
+
+    # ✅ Check if TTL expired
+    if current_time - LAST_CACHE_CLEAR > CACHE_TTL:
+        RESPONSE_CACHE.clear()
+        SEMANTIC_CACHE.clear()
+
+        LAST_CACHE_CLEAR = current_time
+
+        print("🧹 Cache cleared automatically")
+
+def rephrase_response(text):
+    prompt = f"""
+Rephrase the following response using different wording.
+Do NOT change the meaning.
+Keep it concise and professional.
+
+Response:
+{text}
+""" 
+    # ✅ Use your existing Azure chat function
+    return chat_with_context("", prompt)
+
+def vary_response(response):
+    styles = [
+        response,
+        "👉 " + response,
+        "📌 " + response,
+        "\n".join([f"• {line}" for line in response.split("\n") if line.strip()]),
+        response.replace(". ", ".\n\n"),
+    ]
+    return random.choice(styles)
 
 def normalize_query(query):
     q = query.lower().strip()
@@ -26,6 +65,17 @@ def normalize_query(query):
         q = q.replace(f, "")
 
     return q.strip()
+
+def vary_response(response):
+    styles = [
+        response,
+        "👉 " + response,
+        "📌 " + response,
+        response.replace("Technical certification", "Technical certification is"),
+        response.replace("refers to", "means"),
+    ]
+    
+    return random.choice(styles)
 
 def cosine_similarity(v1, v2):
     v1 = np.array(v1)
