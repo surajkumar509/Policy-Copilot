@@ -1,6 +1,8 @@
 import sys
 import os
 from dotenv import load_dotenv
+from agent.tools import rephrase_response, vary_response  
+import random
 
 # ✅ Add project root to Python path FIRST (before any agent imports)
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
