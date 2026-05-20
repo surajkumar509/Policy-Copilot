@@ -1,12 +1,10 @@
-name: Deploy Policy Copilot to Azure
+name: Deploy Policy Copilot to Azure (archived duplicate)
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  archived-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,11 +21,15 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Azure Login
+    - name: Azure Login (archived)
       uses: azure/login@v2
       with:
         client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_F637375DC2444639B34A3BFAB07FB7F3 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_1440C368F3F44E4AAFD82C667FF50412 }}
+        tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_1440C368F3F44E4AAFD82C667FF50412 }}
+        subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_CAF8F1CBC54145E1BED77D47A30422EC }}
+
+    - name: Deploy to Azure App Service (archived)
+      uses: azure/webapps-deploy@v3
       with:
         app-name: policy-copilot-app
         package: .
