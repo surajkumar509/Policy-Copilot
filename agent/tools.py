@@ -14,7 +14,7 @@ SEMANTIC_CACHE = []
 
 # ✅ Track last clear time
 LAST_CACHE_CLEAR = time.time()
-CACHE_TTL = 60
+CACHE_TTL = 10
 
 def auto_clear_cache():
     global LAST_CACHE_CLEAR
@@ -119,8 +119,6 @@ def search_policies(query):
         if source and source not in seen_sources:
             unique_results.append(item)
             seen_sources.add(source)
-        if len(unique_results) >= 3:
-            break
 
     return unique_results
 
