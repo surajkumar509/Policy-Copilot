@@ -22,6 +22,7 @@ from agent.agent import agent_run
 if 'loaded_sources' not in st.session_state:
     st.session_state.loaded_sources = set()
     st.session_state.last_sync_time = 0
+    st.session_state.load_error = None
 
 # ✅ Auto-sync interval in seconds
 AUTO_SYNC_INTERVAL = 30
@@ -31,6 +32,7 @@ def load_new_documents():
     try:
         docs = load_documents()
         added_count = 0
+        st.session_state.load_error = None
         
         for doc in docs:
             # ✅ Skip if already loaded
@@ -54,7 +56,7 @@ def load_new_documents():
             # ✅ Print loaded policy
             print(f"📄 Loaded policy: {doc['source']}")
         
-        # ✅ Update sync time
+        # ✅ Update sync time only when we attempt a load
         st.session_state.last_sync_time = time.time()
         
         if added_count > 0:
@@ -62,6 +64,7 @@ def load_new_documents():
         
         return added_count
     except Exception as e:
+        st.session_state.load_error = str(e)
         print(f"❌ Error loading documents: {e}")
         return 0
 
@@ -98,6 +101,9 @@ with st.sidebar:
     last_sync = datetime.fromtimestamp(st.session_state.last_sync_time).strftime('%H:%M:%S') if st.session_state.last_sync_time > 0 else "Never"
     st.caption(f"Last sync: {last_sync}")
     st.caption(f"Auto-syncs every {AUTO_SYNC_INTERVAL}s")
+
+    if st.session_state.load_error:
+        st.error(f"Document load error: {st.session_state.load_error}")
 
     st.write(f"Total loaded: {len(st.session_state.loaded_sources)}")
 

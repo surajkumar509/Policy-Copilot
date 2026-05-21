@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 try:
     from openai import AzureOpenAI
@@ -19,7 +22,7 @@ if azure_configured and AzureOpenAI is not None:
     client = AzureOpenAI(
         api_key=os.environ["AZURE_OPENAI_API_KEY"],
         azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-        api_version="2024-02-01"
+        api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-01")
     )
 
 def chat_with_context(context: str, user_query: str) -> str:
