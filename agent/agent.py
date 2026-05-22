@@ -2,18 +2,19 @@ from agent.tools import (
     search_policies,
     generate_answer,
     create_checklist,
-    draft_email
+    draft_email,
+    normalize_query   
 )
 
 def agent_run(inp):
-    q = inp.lower()
-
+    normalized = normalize_query(inp)   
     context = search_policies(inp)
 
-    if any(word in q for word in ["checklist", "steps", "procedure", "process"]):
+    # Use normalized query for intent detection
+    if "checklist" in normalized:
         return create_checklist(context, inp)
 
-    elif any(word in q for word in ["email", "mail", "draft"]):
+    elif "email" in normalized:
         return draft_email(context, inp)
 
     else:
