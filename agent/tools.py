@@ -11,7 +11,7 @@ SEMANTIC_CACHE = []
 
 # ✅ Tracking
 LAST_CACHE_CLEAR = time.time()
-CACHE_TTL = 30
+CACHE_TTL = 20
 
 TOTAL_QUERIES = 0
 CACHE_HITS = 0
