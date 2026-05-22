@@ -5,132 +5,57 @@ import numpy as np
 import time
 import random
 
-
-# Exact cache (simple dictionary)
+# ✅ Caches
 RESPONSE_CACHE = {}
-
-# Semantic cache (list of embeddings)
 SEMANTIC_CACHE = []
 
-# ✅ Track last clear time
+# ✅ Tracking
 LAST_CACHE_CLEAR = time.time()
-CACHE_TTL = 60
+CACHE_TTL = 30
+
 TOTAL_QUERIES = 0
 CACHE_HITS = 0
 API_CALLS = 0
 
+
+# ✅ Auto clear cache
 def auto_clear_cache():
     global LAST_CACHE_CLEAR
 
-    current_time = time.time()
-
-    # ✅ Check if TTL expired
-    if current_time - LAST_CACHE_CLEAR > CACHE_TTL:
+    if time.time() - LAST_CACHE_CLEAR > CACHE_TTL:
         RESPONSE_CACHE.clear()
         SEMANTIC_CACHE.clear()
-
-        LAST_CACHE_CLEAR = current_time
-
+        LAST_CACHE_CLEAR = time.time()
         print("🧹 Cache cleared automatically")
 
-def rephrase_response(text):
-    prompt = f"""
-Rephrase the following response using different wording.
-Do NOT change the meaning.
-Keep it concise and professional.
 
-Response:
-{text}
-""" 
-    # ✅ Use your existing Azure chat function
-    return chat_with_context("", prompt)
-
-def vary_response(response):
-    styles = [
-        response,
-        "👉 " + response,
-        "📌 " + response,
-        "\n".join([f"• {line}" for line in response.split("\n") if line.strip()]),
-        response.replace(". ", ".\n\n"),
-    ]
-    return random.choice(styles)
-
+# ✅ Normalize query
 def normalize_query(query):
     q = query.lower().strip()
-
-    # remove filler words
-    fillers = [
-        "please", "can you", "tell me", "how to",
-        "about", "what is", "explain"
-    ]
-
+    fillers = ["please", "can you", "tell me", "how to", "about", "what is", "explain"]
     for f in fillers:
         q = q.replace(f, "")
-
     return q.strip()
 
-def vary_response(response):
-    styles = [
-        response,
-        "👉 " + response,
-        "📌 " + response,
-        response.replace("Technical certification", "Technical certification is"),
-        response.replace("refers to", "means"),
-    ]
-    
-    return random.choice(styles)
 
+# ✅ Cosine similarity FIXED
 def cosine_similarity(v1, v2):
     v1 = np.array(v1)
     v2 = np.array(v2)
 
-    return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+    denom = np.linalg.norm(v1) * np.linalg.norm(v2)
+    if denom == 0:
+        return 0
+
+    return np.dot(v1, v2) / denom
+
+
+# ✅ Semantic cache lookup
+def find_similar_query(query, intent, threshold=0.65):
+    query = normalize_query(query)
     query_vec = embed_text(query)
 
     for item in SEMANTIC_CACHE:
-        sim = cosine_similarity(query_vec, item["embedding"])
-
-        if sim > threshold:
-            return item["response"]
-
-    return None
-
-def store_semantic_cache(query, response, intent):
-    SEMANTIC_CACHE.append({
-        "query": query,
-        "embedding": embed_text(query),
-        "response": response,
-        "intent": intent
-    })
-
-def set_vector_db(db):
-    shared_store.vector_db = db
-
-
-def search_policies(query):
-    db = shared_store.vector_db
-    if db.index is None or db.index.ntotal == 0:
-        return []
-
-    query_vector = embed_text(query)
-    search_results = db.search(query_vector)
-
-    unique_results = []
-    seen_sources = set()
-    for item in search_results:
-        source = item.get('source') if isinstance(item, dict) else None
-        if source and source not in seen_sources:
-            unique_results.append(item)
-            seen_sources.add(source)
-
-    return unique_results
-
-def find_similar_query(query, intent, threshold=0.75):
-    query_vec = embed_text(query)
-
-    for item in SEMANTIC_CACHE:
-
-        # ✅ Intent must match
         if item["intent"] != intent:
             continue
 
@@ -140,135 +65,174 @@ def find_similar_query(query, intent, threshold=0.75):
             return item["response"]
 
     return None
-    
+
+
+# ✅ Store semantic cache
+def store_semantic_cache(query, response, intent):
+    query = normalize_query(query)
+
+    SEMANTIC_CACHE.append({
+        "query": query,
+        "embedding": embed_text(query),
+        "response": response,
+        "intent": intent
+    })
+
+
+# ✅ Search policies
+def search_policies(query):
+    db = shared_store.vector_db
+
+    if db.index is None or db.index.ntotal == 0:
+        return []
+
+    query_vector = embed_text(query)
+    results = db.search(query_vector)
+
+    unique = []
+    seen = set()
+
+    for item in results:
+        src = item.get('source')
+        if src and src not in seen:
+            unique.append(item)
+            seen.add(src)
+
+    return unique
+
+
+# ✅ Cost saving FIXED
 def get_cost_savings():
     if TOTAL_QUERIES == 0:
         return 0
-    
-    return round((CACHE_HITS / TOTAL_QUERIES) * 100)
 
+    saved = TOTAL_QUERIES - API_CALLS
+    return round((saved / TOTAL_QUERIES) * 100)
+
+
+# ✅ Vary response (KEEP SINGLE VERSION)
+def vary_response(response):
+    styles = [
+        response,
+        "👉 " + response,
+        "📌 " + response
+    ]
+    return random.choice(styles)
+
+
+# ✅ Generate answer
 def generate_answer(context, query):
-
     global TOTAL_QUERIES, CACHE_HITS, API_CALLS
+
+    auto_clear_cache()
     TOTAL_QUERIES += 1
 
-    # ✅ Normalize query for exact cache
     normalized = normalize_query(query)
     cache_key = f"ANSWER::{normalized}"
 
-    print("\n🔎 Incoming Query:", query)
+    print("\n🔎 Query:", query)
 
-    # ✅ 1. Exact cache check
+    # ✅ Exact cache
     if cache_key in RESPONSE_CACHE:
-        print("✅ Exact cache HIT (No API call)")
         CACHE_HITS += 1
+        print("✅ Exact cache HIT")
         return RESPONSE_CACHE[cache_key], "EXACT_CACHE"
 
-    # ✅ 2. Semantic cache check
-    semantic_result = find_similar_query(query, "ANSWER")
-    if semantic_result:
-        print("✅ Semantic cache HIT (No API call)")
+    # ✅ Semantic cache
+    semantic = find_similar_query(query, "ANSWER")
+    if semantic:
         CACHE_HITS += 1
-        return semantic_result, "SEMANTIC_CACHE"
+        print("✅ Semantic cache HIT")
+        return semantic, "SEMANTIC_CACHE"
 
-    print("🚀 Cache MISS → Calling Azure OpenAI API")
+    print("🚀 API CALL STARTED")
 
-    # ✅ 3. Guard: no context
     if not context:
         return "⚠️ No relevant policy documents found.", "API_CALL"
 
-    # ✅ 4. Prepare context for RAG
-    context_texts = [
-        f"{item['source']}\n{item['text']}"
-        for item in context
-        if isinstance(item, dict)
-    ]
+    context_text = "\n\n".join([f"{c['source']}\n{c['text']}" for c in context])
 
-    # ✅ 5. Azure OpenAI call (only here)
-    response = chat_with_context("\n\n".join(context_texts), query)
+    response = chat_with_context(context_text, query)
 
-    print("✅ Azure OpenAI API CALL COMPLETED")
     API_CALLS += 1
+    print("✅ API DONE")
 
-    # ✅ 6. Store in caches
     RESPONSE_CACHE[cache_key] = response
     store_semantic_cache(query, response, "ANSWER")
 
-    # ✅ 7. Always return tuple
     return response, "API_CALL"
 
-    
-    return response
 
+# ✅ Checklist
 def create_checklist(context, query):
+    global TOTAL_QUERIES, CACHE_HITS, API_CALLS
 
+    auto_clear_cache()
+    TOTAL_QUERIES += 1
     normalized = normalize_query(query)
     cache_key = f"CHECKLIST::{normalized}"
 
     if cache_key in RESPONSE_CACHE:
+        CACHE_HITS += 1 
         return RESPONSE_CACHE[cache_key], "EXACT_CACHE"
 
-    semantic_result = find_similar_query(query, "CHECKLIST")
-    if semantic_result:
-        return semantic_result, "SEMANTIC_CACHE"
+    semantic = find_similar_query(query, "CHECKLIST")
+    if semantic:
+        CACHE_HITS += 1 
+        return semantic, "SEMANTIC_CACHE"
 
     if not context:
-        return "⚠️ No relevant policy content found.", "API_CALL"
+        return "⚠️ No policy content", "API_CALL"
 
-    context_texts = [item["text"] for item in context if isinstance(item, dict)]
-
-    prompt = """
-Create a clear, step-by-step compliance checklist using ONLY the policy context below.
-Limit the checklist to a maximum of 5 steps.
-
-Policy Context:
-""" + "\n\n".join(context_texts)
+    prompt = "Create max 5 step checklist:\n" + "\n\n".join(c["text"] for c in context)
 
     response = chat_with_context(prompt, query)
+    API_CALLS += 1
 
     RESPONSE_CACHE[cache_key] = response
     store_semantic_cache(query, response, "CHECKLIST")
 
     return response, "API_CALL"
 
-def draft_email(context, query):
 
+# ✅ Email
+def draft_email(context, query):
+    global TOTAL_QUERIES, CACHE_HITS, API_CALLS
+
+    auto_clear_cache()
+    TOTAL_QUERIES += 1
     normalized = normalize_query(query)
     cache_key = f"EMAIL::{normalized}"
 
     if cache_key in RESPONSE_CACHE:
+        CACHE_HITS += 1 
         return RESPONSE_CACHE[cache_key], "EXACT_CACHE"
 
-    semantic_result = find_similar_query(query, "EMAIL")
-    if semantic_result:
-        return semantic_result, "SEMANTIC_CACHE"
+    semantic = find_similar_query(query, "EMAIL")
+    if semantic:
+        CACHE_HITS += 1
+        return semantic, "SEMANTIC_CACHE"
 
     if not context:
-        return "⚠️ No relevant policy content found.", "API_CALL"
+        return "⚠️ No policy content", "API_CALL"
 
-    context_texts = [item["text"] for item in context if isinstance(item, dict)]
-
-    prompt = """
-Draft a professional corporate email using ONLY the policy context below.
-Keep the email concise (under 150 words).
-
-Policy Context:
-""" + "\n\n".join(context_texts)
+    prompt = "Write short professional email:\n" + "\n\n".join(c["text"] for c in context)
 
     response = chat_with_context(prompt, query)
+    API_CALLS += 1
 
     RESPONSE_CACHE[cache_key] = response
     store_semantic_cache(query, response, "EMAIL")
 
     return response, "API_CALL"
-    
-def detect_intent(query):    
-    q = query.lower()
 
-    if any(word in q for word in ["checklist", "steps", "procedure", "process"]):
-        return "CHECKLIST"
+def rephrase_response(text):
+    prompt = f"""
+Rephrase the following response using different wording.
+Do NOT change the meaning.
+Keep it concise and professional.
 
-    if any(word in q for word in ["email", "mail", "draft"]):
-        return "EMAIL"
-
-    return "ANSWER"
+Response:
+{text}
+"""
+    return chat_with_context("", prompt)

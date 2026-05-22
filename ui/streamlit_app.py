@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 load_dotenv()
 
-from agent.tools import rephrase_response, vary_response  
 import random
+import agent.tools as tools
 import time
 from datetime import datetime
 
@@ -17,7 +17,6 @@ from rag.chunker import chunk_text
 from rag.azure_embeddings import embed_text
 from rag.shared_store import vector_db
 from agent.agent import agent_run
-from agent.tools import TOTAL_QUERIES, CACHE_HITS, API_CALLS, get_cost_savings
 
 # ✅ Session state to track loaded document sources
 if 'loaded_sources' not in st.session_state:
@@ -119,9 +118,9 @@ if st.button("Submit"):
         # ✅ Apply variation ONLY for cache responses
         if source != "API_CALL":
             if random.random() < 0.2:   # 20% rephrase
-                response = rephrase_response(response)
+                response = tools.rephrase_response(response)
             else:
-                response = vary_response(response)
+                response = tools.vary_response(response)
 
         # ✅ Indicator (✅ = fresh, ☑️ = cached)
         dot = "☑️" if source != "API_CALL" else "✅"
@@ -138,10 +137,10 @@ if st.button("Submit"):
         # ✅ Clean formatting
         formatted = response.replace("\n", "<br>")  
         st.sidebar.markdown("### 📊 Cost Optimization")
-        st.sidebar.write(f"Total Queries: {TOTAL_QUERIES}")
-        st.sidebar.write(f"Cache Hits: {CACHE_HITS}")
-        st.sidebar.write(f"API Calls: {API_CALLS}")
-        st.sidebar.success(f"💰 Savings: {get_cost_savings()}%")
+        st.sidebar.write(f"Total Queries: {tools.TOTAL_QUERIES}")
+        st.sidebar.write(f"Cache Hits: {tools.CACHE_HITS}")
+        st.sidebar.write(f"API Calls: {tools.API_CALLS}")
+        st.sidebar.success(f"💰 Savings: {tools.get_cost_savings()}%")
         st.markdown(
             f"""
             <div style="

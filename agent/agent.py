@@ -1,15 +1,20 @@
-
-from agent.tools import search_policies, generate_answer, create_checklist, draft_email, auto_clear_cache
+from agent.tools import (
+    search_policies,
+    generate_answer,
+    create_checklist,
+    draft_email
+)
 
 def agent_run(inp):
-    auto_clear_cache()
     q = inp.lower()
-    ctx = search_policies(inp)
+
+    context = search_policies(inp)
+
     if any(word in q for word in ["checklist", "steps", "procedure", "process"]):
-        return create_checklist(ctx, inp)
+        return create_checklist(context, inp)
 
     elif any(word in q for word in ["email", "mail", "draft"]):
-        return draft_email(ctx, inp)
+        return draft_email(context, inp)
 
     else:
-        return generate_answer(ctx, inp)
+        return generate_answer(context, inp)
