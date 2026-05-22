@@ -31,11 +31,29 @@ def auto_clear_cache():
 
 # ✅ Normalize query
 def normalize_query(query):
-    q = query.lower().strip()
-    fillers = ["please", "can you", "tell me", "how to", "about", "what is", "explain"]
-    for f in fillers:
+    q = query.lower()
+
+    # unify
+    q = q.replace("check list", "checklist")
+
+    replacements = {
+        "steps": "checklist",
+        "procedure": "checklist",
+        "mail": "email",
+        "draft": "email"
+    }
+
+    for k, v in replacements.items():
+        q = q.replace(k, v)
+
+    # remove fillers
+    for f in ["please", "can you", "tell me", "how to"]:
         q = q.replace(f, "")
-    return q.strip()
+
+    # ✅ CRITICAL FIX
+    q = " ".join(q.split())   # removes extra spaces
+
+    return q
 
 
 # ✅ Cosine similarity FIXED
@@ -51,7 +69,7 @@ def cosine_similarity(v1, v2):
 
 
 # ✅ Semantic cache lookup
-def find_similar_query(query, intent, threshold=0.65):
+def find_similar_query(query, intent, threshold=0.60):
     query = normalize_query(query)
     query_vec = embed_text(query)
 
@@ -175,7 +193,8 @@ def create_checklist(context, query):
     if cache_key in RESPONSE_CACHE:
         CACHE_HITS += 1 
         return RESPONSE_CACHE[cache_key], "EXACT_CACHE"
-
+    
+    normalized = normalize_query(query)
     semantic = find_similar_query(query, "CHECKLIST")
     if semantic:
         CACHE_HITS += 1 
