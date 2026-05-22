@@ -14,7 +14,10 @@ SEMANTIC_CACHE = []
 
 # ✅ Track last clear time
 LAST_CACHE_CLEAR = time.time()
-CACHE_TTL = 10
+CACHE_TTL = 60
+TOTAL_QUERIES = 0
+CACHE_HITS = 0
+API_CALLS = 0
 
 def auto_clear_cache():
     global LAST_CACHE_CLEAR
@@ -137,8 +140,17 @@ def find_similar_query(query, intent, threshold=0.75):
             return item["response"]
 
     return None
+    
+def get_cost_savings():
+    if TOTAL_QUERIES == 0:
+        return 0
+    
+    return round((CACHE_HITS / TOTAL_QUERIES) * 100)
 
 def generate_answer(context, query):
+
+    global TOTAL_QUERIES, CACHE_HITS, API_CALLS
+    TOTAL_QUERIES += 1
 
     # ✅ Normalize query for exact cache
     normalized = normalize_query(query)
@@ -149,12 +161,14 @@ def generate_answer(context, query):
     # ✅ 1. Exact cache check
     if cache_key in RESPONSE_CACHE:
         print("✅ Exact cache HIT (No API call)")
+        CACHE_HITS += 1
         return RESPONSE_CACHE[cache_key], "EXACT_CACHE"
 
     # ✅ 2. Semantic cache check
     semantic_result = find_similar_query(query, "ANSWER")
     if semantic_result:
         print("✅ Semantic cache HIT (No API call)")
+        CACHE_HITS += 1
         return semantic_result, "SEMANTIC_CACHE"
 
     print("🚀 Cache MISS → Calling Azure OpenAI API")
@@ -174,6 +188,7 @@ def generate_answer(context, query):
     response = chat_with_context("\n\n".join(context_texts), query)
 
     print("✅ Azure OpenAI API CALL COMPLETED")
+    API_CALLS += 1
 
     # ✅ 6. Store in caches
     RESPONSE_CACHE[cache_key] = response
@@ -182,41 +197,7 @@ def generate_answer(context, query):
     # ✅ 7. Always return tuple
     return response, "API_CALL"
 
-    normalized = normalize_query(query)
-    cache_key = f"ANSWER::{normalized}"
-
-    print("\n🔎 Incoming Query:", query)
-
-    # ✅ Exact cache
-    if cache_key in RESPONSE_CACHE:
-        print("✅ Exact cache HIT (No API call)")
-        return RESPONSE_CACHE[cache_key]
-
-    # ✅ Semantic cache
-    semantic_result = find_similar_query(query, "ANSWER")
-    if semantic_result:
-        print("✅ Semantic cache HIT (No API call)")
-        return semantic_result
-
-    print("🚀 Cache MISS → Calling Azure OpenAI API")
-
-    # ✅ Original logic
-    if not context:
-        return "⚠️ No relevant policy documents found."
-    context_texts = []
-    for item in context:
-        if isinstance(item, dict):
-            context_texts.append(f"{item['source']}\n{item['text']}")
-
-    # 🔥 THIS IS YOUR ACTUAL API CALL
-    response = chat_with_context("\n\n".join(context_texts), query)
-
-    print("✅ Azure OpenAI API CALL COMPLETED")
-
-    # ✅ Store in cache
-    RESPONSE_CACHE[cache_key] = response
-    store_semantic_cache(query, response, "ANSWER")
-
+    
     return response
 
 def create_checklist(context, query):

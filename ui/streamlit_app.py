@@ -17,6 +17,7 @@ from rag.chunker import chunk_text
 from rag.azure_embeddings import embed_text
 from rag.shared_store import vector_db
 from agent.agent import agent_run
+from agent.tools import TOTAL_QUERIES, CACHE_HITS, API_CALLS, get_cost_savings
 
 # ✅ Session state to track loaded document sources
 if 'loaded_sources' not in st.session_state:
@@ -135,8 +136,12 @@ if st.button("Submit"):
         st.markdown(f"{dot} Response")
 
         # ✅ Clean formatting
-        formatted = response.replace("\n", "<br>")
-
+        formatted = response.replace("\n", "<br>")  
+        st.sidebar.markdown("### 📊 Cost Optimization")
+        st.sidebar.write(f"Total Queries: {TOTAL_QUERIES}")
+        st.sidebar.write(f"Cache Hits: {CACHE_HITS}")
+        st.sidebar.write(f"API Calls: {API_CALLS}")
+        st.sidebar.success(f"💰 Savings: {get_cost_savings()}%")
         st.markdown(
             f"""
             <div style="
