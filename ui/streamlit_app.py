@@ -25,7 +25,7 @@ if 'loaded_sources' not in st.session_state:
     st.session_state.load_error = None
 
 # ✅ Auto-sync interval in seconds
-AUTO_SYNC_INTERVAL = 30
+AUTO_SYNC_INTERVAL = 20
 
 def load_new_documents():
     """Load only NEW documents from Azure Blob that haven't been loaded yet"""
@@ -107,31 +107,37 @@ with st.sidebar:
 
     st.write(f"Total loaded: {len(st.session_state.loaded_sources)}")
 
-user_query = st.text_area("Enter your policy question or request:")
+with st.form("query_form", clear_on_submit=True):
+    user_query = st.text_area("Enter your policy question or request:")
+    submitted = st.form_submit_button("Submit")
 
-
-if st.button("Submit"):
+if submitted:
     if user_query.strip():
+
         with st.spinner("Thinking..."):
             response, source = agent_run(user_query)
 
-        # ✅ Apply variation ONLY for cache responses
+        # ✅ Apply variation
         if source != "API_CALL":
-            if random.random() < 0.2:   # 20% rephrase
+            if random.random() < 0.2:
                 response = tools.rephrase_response(response)
             else:
                 response = tools.vary_response(response)
 
-        # ✅ Indicator (✅ = fresh, ☑️ = cached)
         dot = "☑️" if source != "API_CALL" else "✅"
 
-        # ✅ Indicator on top-right
-        # st.markdown(
-        #     f"<div style='text-align:right; font-size:20px'>{dot}</div>",
-        #     unsafe_allow_html=True
-        # )
+        # ✅ Show query
+        st.markdown(
+            f"""
+            <div style='text-align:right; font-size:18px; color:#555; margin-bottom:10px;'>
+                <strong>Query:</strong> {user_query}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-        # ✅ Header
+        # ✅ Response
+        formatted = response.replace("\n", "<br>")
         st.markdown(f"{dot} Response")
 
         # ✅ Clean formatting
@@ -148,8 +154,6 @@ if st.button("Submit"):
                 padding:15px;
                 border-radius:10px;
                 border:1px solid #ddd;
-                font-size:15px;
-                line-height:1.6;
             ">
                 {formatted}
             </div>
