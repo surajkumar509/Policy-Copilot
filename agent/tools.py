@@ -11,11 +11,16 @@ SEMANTIC_CACHE = []
 
 # ✅ Tracking
 LAST_CACHE_CLEAR = time.time()
-CACHE_TTL = 20
+CACHE_TTL = 120
 
 TOTAL_QUERIES = 0
 CACHE_HITS = 0
 API_CALLS = 0
+
+
+def set_vector_db(db):
+    """Allow application entrypoints to replace the shared in-memory vector store."""
+    shared_store.vector_db = db
 
 
 # ✅ Auto clear cache
