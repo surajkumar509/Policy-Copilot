@@ -82,6 +82,9 @@ if "download_label" not in st.session_state:
 if "prepared_download_format" not in st.session_state:
     st.session_state.prepared_download_format = ""
 
+if "user_query_text" not in st.session_state:
+    st.session_state.user_query_text = ""
+
 
 # =========================
 # ✅ PARALLEL EMBEDDING
@@ -176,6 +179,211 @@ def build_checklist_txt(query, response):
     return content.encode("utf-8")
 
 
+def format_last_sync_time(ts):
+    if not ts:
+        return "Not synced yet"
+    dt = datetime.fromtimestamp(ts)
+    return dt.strftime("%d %b %Y, %I:%M %p")
+
+
+def inject_enterprise_theme():
+    st.markdown(
+        """
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
+
+            :root {
+                --brand-navy: #0e1f3d;
+                --brand-blue: #1556d6;
+                --brand-cyan: #0aa6c8;
+                --surface: #f4f7fb;
+                --card: #ffffff;
+                --border: #d9e2ef;
+                --text: #12263a;
+                --muted: #4b6178;
+                --ok: #198754;
+            }
+
+            .stApp {
+                background:
+                    radial-gradient(circle at 12% 18%, rgba(10, 166, 200, 0.14), transparent 30%),
+                    radial-gradient(circle at 85% 10%, rgba(21, 86, 214, 0.10), transparent 35%),
+                    linear-gradient(180deg, #f8fbff 0%, var(--surface) 58%, #eef3f9 100%);
+                color: var(--text);
+                font-family: 'IBM Plex Sans', sans-serif;
+            }
+
+            .main .block-container {
+                padding-top: 1.5rem;
+                padding-bottom: 2rem;
+            }
+
+            .hero-shell {
+                background: linear-gradient(110deg, var(--brand-navy), #14356a 58%, #1b4a93 100%);
+                color: #ffffff;
+                border-radius: 18px;
+                border: 1px solid rgba(255, 255, 255, 0.14);
+                padding: 1.25rem 1.4rem;
+                box-shadow: 0 16px 32px rgba(11, 32, 67, 0.24);
+                margin-bottom: 1rem;
+                animation: heroFade 0.45s ease-out;
+            }
+
+            .hero-title {
+                font-size: 1.55rem;
+                font-weight: 700;
+                letter-spacing: 0.2px;
+                margin-bottom: 0.25rem;
+            }
+
+            .hero-sub {
+                color: rgba(255, 255, 255, 0.90);
+                font-size: 0.95rem;
+                margin: 0;
+            }
+
+            .kpi-grid {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(120px, 1fr));
+                gap: 0.8rem;
+                margin: 0.85rem 0 1.1rem;
+            }
+
+            .kpi-card {
+                background: var(--card);
+                border: 1px solid var(--border);
+                border-radius: 14px;
+                padding: 0.8rem 0.95rem;
+                box-shadow: 0 6px 18px rgba(18, 38, 58, 0.06);
+            }
+
+            .kpi-label {
+                color: var(--muted);
+                font-size: 0.78rem;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                margin: 0;
+            }
+
+            .kpi-value {
+                color: var(--text);
+                font-size: 1.18rem;
+                font-weight: 700;
+                margin: 0.2rem 0 0;
+            }
+
+            .panel {
+                background: var(--card);
+                border: 1px solid var(--border);
+                border-radius: 14px;
+                padding: 1rem;
+                box-shadow: 0 10px 24px rgba(18, 38, 58, 0.05);
+                margin-bottom: 0.95rem;
+            }
+
+            div[data-testid='stForm'] {
+                background: var(--card);
+                border: 1px solid var(--border);
+                border-radius: 14px;
+                padding: 1rem 1rem 0.25rem;
+                box-shadow: 0 10px 24px rgba(18, 38, 58, 0.05);
+                margin-bottom: 0.95rem;
+            }
+
+            .query-chip {
+                display: inline-block;
+                background: rgba(21, 86, 214, 0.10);
+                color: #103469;
+                border: 1px solid rgba(21, 86, 214, 0.28);
+                border-radius: 999px;
+                font-size: 0.78rem;
+                font-weight: 600;
+                padding: 0.25rem 0.65rem;
+                margin-bottom: 0.55rem;
+            }
+
+            .response-shell {
+                background: #f8fbff;
+                border: 1px solid #d6e3f5;
+                border-left: 5px solid var(--brand-blue);
+                border-radius: 12px;
+                padding: 0.95rem 1rem;
+                color: var(--text);
+                line-height: 1.55;
+            }
+
+            [data-testid='stSidebar'] {
+                background: linear-gradient(180deg, #0f2649 0%, #112f5a 58%, #12386f 100%);
+                border-right: 1px solid rgba(255, 255, 255, 0.08);
+            }
+
+            [data-testid='stSidebar'] * {
+                color: #eaf1ff;
+            }
+
+            [data-testid='stSidebar'] .stButton > button {
+                border-radius: 10px;
+                border: 1px solid rgba(255, 255, 255, 0.24);
+                background: rgba(255, 255, 255, 0.08);
+                color: #f4f8ff;
+            }
+
+            .stButton > button, .stDownloadButton > button {
+                border-radius: 10px;
+                border: 1px solid #184aa3;
+                background: linear-gradient(180deg, #1d5fd4 0%, #1550ba 100%);
+                color: #ffffff;
+                font-weight: 600;
+            }
+
+            .stButton > button:hover, .stDownloadButton > button:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 8px 18px rgba(21, 86, 214, 0.22);
+            }
+
+            .stTextArea textarea, .stTextInput input {
+                border-radius: 10px !important;
+                border: 1px solid #bfd0e8 !important;
+                background-color: #ffffff !important;
+            }
+
+            .cost-panel {
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.06);
+                padding: 0.75rem;
+                margin-top: 0.6rem;
+            }
+
+            .cost-row {
+                display: flex;
+                justify-content: space-between;
+                font-size: 0.85rem;
+                margin: 0.2rem 0;
+            }
+
+            .cost-ok {
+                color: #9ef1bc;
+                font-weight: 700;
+                margin-top: 0.35rem;
+            }
+
+            @keyframes heroFade {
+                from { opacity: 0; transform: translateY(10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+
+            @media (max-width: 900px) {
+                .kpi-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # =========================
 # ✅ LOAD NEW DOCUMENTS
 # =========================
@@ -236,9 +444,17 @@ def load_new_documents():
 # ✅ PAGE CONFIG
 # =========================
 st.set_page_config(page_title="Policy & SOP Copilot", layout="wide")
+inject_enterprise_theme()
 
-st.title("📘 Policy & SOP Compliance Copilot")
-st.write("Agentic AI + RAG powered policy assistant")
+st.markdown(
+    """
+    <div class="hero-shell">
+        <div class="hero-title">Policy and SOP Compliance Copilot</div>
+        <p class="hero-sub">Enterprise-grade assistant for policy Q&A, checklist automation, and communication workflows.</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 # One-time auto load: runs only once per session so reruns stay fast.
 if not st.session_state.initial_load_done:
@@ -250,11 +466,12 @@ if not st.session_state.initial_load_done:
 # ✅ SIDEBAR
 # =========================
 with st.sidebar:
-    st.header("📚 Documents")
-    st.write(f"✅ Loaded: {len(st.session_state.loaded_sources)}")
+    st.header("Control Center")
+    st.caption("Document sync, prompts, and usage insights")
+    st.write(f"Loaded policies: {len(st.session_state.loaded_sources)}")
 
     # ✅ Manual Sync Button
-    if st.button("🔄 Sync Now"):
+    if st.button("Sync Knowledge Base", use_container_width=True):
         with st.spinner("Syncing policies..."):
             new_count = load_new_documents()
 
@@ -263,28 +480,92 @@ with st.sidebar:
         else:
             st.info("No new policies found")
 
+    st.caption(f"Last sync: {format_last_sync_time(st.session_state.last_sync_time)}")
+
+    st.subheader("Quick Prompts")
+    quick_prompts = [
+        "Summarize leave policy key points",
+        "Create a checklist for employee onboarding policy",
+        "Draft an email for policy non-compliance reminder",
+    ]
+    for prompt in quick_prompts:
+        if st.button(prompt, use_container_width=True):
+            st.session_state.user_query_text = prompt
+
     st.subheader("Loaded Policies")
 
     if st.session_state.loaded_sources:
-        for i, policy in enumerate(sorted(st.session_state.loaded_sources), 1):
-            st.write(f"{i}. {policy}")
+        policy_filter = st.text_input("Filter policies")
+        visible_policies = sorted(st.session_state.loaded_sources)
+        if policy_filter.strip():
+            visible_policies = [
+                p
+                for p in visible_policies
+                if policy_filter.lower().strip() in p.lower()
+            ]
+        with st.expander(f"View list ({len(visible_policies)})", expanded=False):
+            for i, policy in enumerate(visible_policies, 1):
+                st.write(f"{i}. {policy}")
     else:
         st.write("No policies loaded")
 
     if st.session_state.load_error:
         st.error(st.session_state.load_error)
 
+    st.markdown(
+        f"""
+        <div class="cost-panel">
+            <div style="font-weight:700; margin-bottom: 0.35rem;">Token Cost Optimization</div>
+            <div class="cost-row"><span>Total Queries</span><span>{tools.TOTAL_QUERIES}</span></div>
+            <div class="cost-row"><span>Cache Hits</span><span>{tools.CACHE_HITS}</span></div>
+            <div class="cost-row"><span>API Calls</span><span>{tools.API_CALLS}</span></div>
+            <div class="cost-ok">Savings: {tools.get_cost_savings()}%</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+st.markdown(
+    f"""
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <p class="kpi-label">Policies Indexed</p>
+            <p class="kpi-value">{len(st.session_state.loaded_sources)}</p>
+        </div>
+        <div class="kpi-card">
+            <p class="kpi-label">Initial Session Load</p>
+            <p class="kpi-value">{st.session_state.initial_load_count}</p>
+        </div>
+        <div class="kpi-card">
+            <p class="kpi-label">Last Sync</p>
+            <p class="kpi-value" style="font-size:0.95rem;">{format_last_sync_time(st.session_state.last_sync_time)}</p>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 # =========================
 # ✅ USER INPUT FORM
 # =========================
-with st.form("query_form", clear_on_submit=True):
-    user_query = st.text_area("Enter your policy question:")
-    submitted = st.form_submit_button("Submit")
+with st.form("query_form", clear_on_submit=False):
+    st.markdown(
+        '<div class="query-chip">Policy Query Assistant</div>',
+        unsafe_allow_html=True,
+    )
+    st.text_area(
+        "Ask a policy question",
+        key="user_query_text",
+        height=130,
+        placeholder="Type a policy question, checklist request, or an email drafting task...",
+    )
+    submitted = st.form_submit_button("Run Policy Analysis", use_container_width=True)
 
 # =========================
 # ✅ QUERY HANDLING
 # =========================
 if submitted:
+    user_query = st.session_state.user_query_text
     if user_query.strip():
         # # ✅ LAZY LOAD (ONLY FIRST TIME)
         # if not st.session_state.initial_load_done:
@@ -321,41 +602,21 @@ if st.session_state.last_response:
     source = st.session_state.last_source
     dot = "☑️" if source != "API_CALL" else "✅"
 
-    # ✅ DISPLAY QUERY (TOP RIGHT)
-    st.markdown(
-        f"""
-        <div style='text-align:right; font-size:16px; color:#555; margin-bottom:10px;'>
-            <strong>Query:</strong> {user_query}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # ✅ FORMAT RESPONSE
     formatted = response.replace("\n", "<br>")
 
-    st.markdown(f"{dot} Response")
-
     st.markdown(
         f"""
-        <div style="
-            background-color:#f5f5f5;
-            padding:15px;
-            border-radius:10px;
-            border:1px solid #ddd;
-        ">
-            {formatted}
+        <div class="panel">
+            <div class="query-chip">Latest Query</div>
+            <div style="font-size:0.96rem; color:#20374f; margin-bottom:0.65rem;">{user_query}</div>
+            <div style="margin: 0.2rem 0 0.65rem; font-weight:700;">{dot} Response</div>
+            <div class="response-shell">
+                {formatted}
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-
-    # ✅ COST METRICS
-    st.sidebar.markdown("### 📊Token Cost Optimization")
-    st.sidebar.write(f"Total Queries: {tools.TOTAL_QUERIES}")
-    st.sidebar.write(f"Cache Hits: {tools.CACHE_HITS}")
-    st.sidebar.write(f"API Calls: {tools.API_CALLS}")
-    st.sidebar.success(f"💰 Savings: {tools.get_cost_savings()}%")
 
     normalized_query = tools.normalize_query(user_query)
 
