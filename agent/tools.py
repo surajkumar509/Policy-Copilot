@@ -4,6 +4,7 @@ from rag.azure_chat import chat_with_context
 import numpy as np
 import time
 import random
+from datetime import datetime
 
 # ✅ Caches
 RESPONSE_CACHE = {}
@@ -16,6 +17,11 @@ CACHE_TTL = 120
 TOTAL_QUERIES = 0
 CACHE_HITS = 0
 API_CALLS = 0
+
+STOP_TERMS = {
+    "the", "a", "an", "and", "or", "for", "to", "of", "in", "on", "with",
+    "what", "is", "are", "can", "you", "please", "tell", "me", "about"
+}
 
 
 def set_vector_db(db):
@@ -109,17 +115,63 @@ def search_policies(query):
     if db.index is None or db.index.ntotal == 0:
         return []
 
+    normalized_query = normalize_query(query)
+    query_terms = [t for t in normalized_query.split() if t and t not in STOP_TERMS]
+
     query_vector = embed_text(query)
-    results = db.search(query_vector)
+    # Pull a wider candidate set and rerank to avoid unrelated policy bleed.
+    k = min(40, db.index.ntotal)
+    results = db.search(query_vector, k=k)
+
+    leave_intent = any(t in normalized_query for t in ("leave", "holiday", "lta"))
+    if leave_intent:
+        # Make sure leave/holiday-named policies are considered even if vector rank is low.
+        seeded = {}
+        for item in db.items:
+            src = (item.get("source") or "").lower()
+            if any(t in src for t in ("leave", "holiday", "lta")) and src not in seeded:
+                seeded[src] = item
+        if seeded:
+            results.extend(seeded.values())
+
+    def source_and_text(item):
+        src = (item.get("source") or "").lower()
+        txt = (item.get("text") or "").lower()
+        return src, txt
+
+    def relevance_score(item):
+        src, txt = source_and_text(item)
+        score = 0
+
+        for term in query_terms:
+            if term in src:
+                score += 3
+            if term in txt:
+                score += 2
+
+        # Leave/holiday questions should strongly prefer matching leave/holiday sources.
+        if leave_intent:
+            if any(t in src for t in ("leave", "holiday", "lta")):
+                score += 6
+            if any(t in txt for t in ("leave", "holiday", "lta")):
+                score += 3
+
+        return score
+
+    ranked = sorted(results, key=relevance_score, reverse=True)
 
     unique = []
     seen = set()
+    max_sources = 2 if leave_intent else 3
 
-    for item in results:
+    for item in ranked:
         src = item.get('source')
         if src and src not in seen:
             unique.append(item)
             seen.add(src)
+
+        if len(unique) >= max_sources:
+            break
 
     return unique
 
@@ -176,14 +228,27 @@ def generate_answer(context, query):
     context_text = "\n\n".join([f"{c['source']}\n{c['text']}" for c in context])
 
     answer_prompt = f"""
+You are a policy compliance assistant. Use only the provided policy context.
+
 User question:
 {query}
 
-Answer requirements:
-- Keep the response concise but information-rich.
-- Start with a direct answer in 1 sentence.
-- End with: Source: <policy file names used>.
-- If policy context is insufficient, say what is missing in 1 sentence.
+Response style:
+- Write a rich, descriptive answer that is clear and practical.
+- Include concrete details from policy context (eligibility, conditions, limits, timelines, exceptions, and process steps when available).
+- Use short sections with headings in this order when relevant:
+    1) Direct Answer
+    2) Key Policy Details
+    3) What To Do Next
+    4) Caveats or Missing Information
+- Keep tone professional and easy to understand.
+
+Grounding and safety:
+- Do not invent policy facts.
+- If context is partial, explicitly state what is missing and what document detail would be needed.
+- If multiple policy documents differ, mention the difference briefly.
+- End with exactly one line in this format:
+    Source: <comma-separated policy file names actually used>
 """.strip()
 
     response = chat_with_context(context_text, answer_prompt)
@@ -271,3 +336,35 @@ Response:
 {text}
 """
     return chat_with_context("", prompt)
+
+
+def simulate_email_send(recipients, subject, body, channel="UI_SIMULATOR"):
+    """Return a fake send receipt without sending a real email."""
+    cleaned = [r.strip() for r in recipients if r and r.strip()]
+
+    if not cleaned:
+        return {
+            "ok": False,
+            "message": "Simulation failed: at least one recipient is required.",
+            "details": {
+                "channel": channel,
+                "recipient_count": 0,
+                "subject": subject,
+                "timestamp": datetime.utcnow().isoformat() + "Z"
+            }
+        }
+
+    fake_id = f"SIM-{int(time.time())}-{len(cleaned)}"
+    return {
+        "ok": True,
+        "message": "Simulated send successful (no real email delivered).",
+        "details": {
+            "channel": channel,
+            "message_id": fake_id,
+            "recipient_count": len(cleaned),
+            "recipients": cleaned,
+            "subject": subject,
+            "body_preview": body[:180],
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+    }
