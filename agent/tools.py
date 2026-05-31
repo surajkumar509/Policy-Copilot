@@ -175,7 +175,18 @@ def generate_answer(context, query):
 
     context_text = "\n\n".join([f"{c['source']}\n{c['text']}" for c in context])
 
-    response = chat_with_context(context_text, query)
+    answer_prompt = f"""
+User question:
+{query}
+
+Answer requirements:
+- Keep the response concise but information-rich.
+- Start with a direct answer in 1 sentence.
+- End with: Source: <policy file names used>.
+- If policy context is insufficient, say what is missing in 1 sentence.
+""".strip()
+
+    response = chat_with_context(context_text, answer_prompt)
 
     API_CALLS += 1
     print("✅ API DONE")
