@@ -85,6 +85,33 @@ if "prepared_download_format" not in st.session_state:
 if "user_query_text" not in st.session_state:
     st.session_state.user_query_text = ""
 
+if "selected_country" not in st.session_state:
+    st.session_state.selected_country = "All Countries"
+
+COUNTRY_ALIASES = {
+    "Canada": ["canada", "acnanda", "ca"],
+    "USA": ["usa", "us", "united states", "america"],
+    "India": ["india", "in"],
+    "Japan": ["japan", "jp"],
+    "Netherlands": ["netherlands", "neterland", "holland", "nl"],
+    "UK": ["uk", "united kingdom", "britain", "gb"],
+    "Germany": ["germany", "de"],
+    "Singapore": ["singapore", "sg"],
+    "Australia": ["australia", "au"],
+}
+
+COUNTRY_OPTIONS = [
+    "Canada",
+    "USA",
+    "India",
+    "Japan",
+    "Netherlands",
+    "UK",
+    "Germany",
+    "Singapore",
+    "Australia",
+]
+
 
 # =========================
 # ✅ PARALLEL EMBEDDING
@@ -186,6 +213,25 @@ def format_last_sync_time(ts):
     return dt.strftime("%d %b %Y, %I:%M %p")
 
 
+def extract_country_from_source(source):
+    normalized = (source or "").replace("\\", "/")
+    search_text = " ".join(
+        normalized.lower().replace("/", " ").replace("_", " ").replace("-", " ").split()
+    )
+
+    for country, aliases in COUNTRY_ALIASES.items():
+        for alias in aliases:
+            alias_clean = alias.strip().lower()
+            if alias_clean and alias_clean in search_text:
+                return country
+
+    parts = [part.strip() for part in normalized.split("/") if part.strip()]
+    if len(parts) >= 2:
+        country = parts[0].replace("_", " ").replace("-", " ").strip()
+        return country.title() if country else "Uncategorized"
+    return "Uncategorized"
+
+
 def inject_enterprise_theme():
     st.markdown(
         """
@@ -217,11 +263,54 @@ def inject_enterprise_theme():
                 visibility: hidden;
             }
 
-            [data-testid='stHeader'],
-            [data-testid='stToolbar'],
+            [data-testid='stHeader'] {
+                background: transparent !important;
+                padding: 0.5rem 1rem !important;
+                border-bottom: none !important;
+                min-height: 40px !important;
+            }
+
             [data-testid='stStatusWidget'],
             [data-testid='stDecoration'] {
                 display: none;
+            }
+
+            [data-testid='stHeader'] button {
+                display: inline-flex !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                z-index: 1000;
+                background: transparent !important;
+                border: none !important;
+                color: #1556d6 !important;
+            }
+
+            [data-testid='stHeader'] button:hover {
+                opacity: 0.8 !important;
+            }
+
+            /* Hide top-right Deploy and overflow (three dots) controls */
+            [data-testid='stAppDeployButton'],
+            [data-testid='stAppDeployButton'] *,
+            [data-testid*='Deploy'],
+            [data-testid*='deploy'],
+            [data-testid='stToolbar'] a,
+            [data-testid='stToolbar'] button[aria-label*='Deploy'],
+            [data-testid='stToolbar'] button[title*='Deploy'],
+            [data-testid='stToolbar'] button[aria-label*='menu'],
+            [data-testid='stToolbar'] button[aria-label*='Menu'],
+            [data-testid='stToolbar'] button[title*='menu'],
+            [data-testid='stToolbar'] button[title*='Menu'] {
+                display: none !important;
+                visibility: hidden !important;
+                width: 0 !important;
+                height: 0 !important;
+                overflow: hidden !important;
+            }
+
+            [data-testid='stSidebar'] {
+                display: flex !important;
+                visibility: visible !important;
             }
 
             .main .block-container {
@@ -339,7 +428,7 @@ def inject_enterprise_theme():
                 color: #f4f8ff;
             }
 
-            .stButton > button, .stDownloadButton > button {
+            .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {
                 border-radius: 10px;
                 border: 1px solid #184aa3;
                 background: linear-gradient(180deg, #1d5fd4 0%, #1550ba 100%);
@@ -347,7 +436,7 @@ def inject_enterprise_theme():
                 font-weight: 600;
             }
 
-            .stButton > button:hover, .stDownloadButton > button:hover {
+            .stButton > button:hover, .stDownloadButton > button:hover, .stFormSubmitButton > button:hover {
                 transform: translateY(-1px);
                 box-shadow: 0 8px 18px rgba(21, 86, 214, 0.22);
             }
@@ -356,6 +445,64 @@ def inject_enterprise_theme():
                 border-radius: 10px !important;
                 border: 1px solid #bfd0e8 !important;
                 background-color: #ffffff !important;
+            }
+
+            [data-testid='stSidebar'] .stTextInput input {
+                color: #12263a !important;
+                -webkit-text-fill-color: #12263a !important;
+                caret-color: #12263a !important;
+            }
+
+            [data-testid='stSidebar'] .stTextInput input::placeholder {
+                color: #6f8298 !important;
+                opacity: 1;
+            }
+
+            [data-testid='stSidebar'] .stSelectbox [data-baseweb='select'] > div {
+                background: #ffffff !important;
+                border: 1px solid #bfd0e8 !important;
+                border-radius: 10px !important;
+                color: #12263a !important;
+            }
+
+            [data-testid='stSidebar'] .stSelectbox [data-baseweb='select'] input {
+                color: #12263a !important;
+                -webkit-text-fill-color: #12263a !important;
+            }
+
+            [data-testid='stSidebar'] .stSelectbox [data-baseweb='select'] span,
+            [data-testid='stSidebar'] .stSelectbox [data-baseweb='select'] div,
+            [data-testid='stSidebar'] .stSelectbox [data-baseweb='select'] p {
+                color: #12263a !important;
+                -webkit-text-fill-color: #12263a !important;
+            }
+
+            div[data-baseweb='popover'] ul,
+            div[data-baseweb='popover'] li,
+            div[data-baseweb='popover'] span,
+            div[data-baseweb='popover'] div {
+                color: #12263a !important;
+                -webkit-text-fill-color: #12263a !important;
+            }
+
+            [data-testid='stSidebar'] .stSelectbox [data-baseweb='select'] svg {
+                fill: #35516f !important;
+            }
+
+            [data-testid='stSidebar'] [data-testid='stExpander'],
+            [data-testid='stSidebar'] [data-testid='stExpander'] details,
+            [data-testid='stSidebar'] [data-testid='stExpander'] details[open],
+            [data-testid='stSidebar'] [data-testid='stExpander'] summary,
+            [data-testid='stSidebar'] [data-testid='stExpander'] summary:hover,
+            [data-testid='stSidebar'] [data-testid='stExpander'] div {
+                background: transparent !important;
+                background-color: transparent !important;
+                color: #eaf1ff !important;
+            }
+
+            [data-testid='stSidebar'] [data-testid='stExpander'] details {
+                border: 1px solid rgba(255, 255, 255, 0.18) !important;
+                border-radius: 10px !important;
             }
 
             .cost-panel {
@@ -454,13 +601,17 @@ def load_new_documents():
 # =========================
 # ✅ PAGE CONFIG
 # =========================
-st.set_page_config(page_title="Policy & SOP Copilot", layout="wide")
+st.set_page_config(
+    page_title="Policy & SOP Copilot",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 inject_enterprise_theme()
 
 st.markdown(
     """
     <div class="hero-shell">
-        <div class="hero-title">Policy and SOP Compliance Copilot</div>
+        <div class="hero-title">Enterprise Trial Management Copilot</div>
         <p class="hero-sub">Enterprise-grade assistant for policy Q&A, checklist automation, and communication workflows.</p>
     </div>
     """,
@@ -495,19 +646,48 @@ with st.sidebar:
 
     st.subheader("Quick Prompts")
     quick_prompts = [
-        "Summarize leave policy key points",
-        "Create a checklist for employee onboarding policy",
-        "Draft an email for policy non-compliance reminder",
+        "Show recent updates in policies",
+        "Create a checklist for lta policy",
+        "Draft an email for certification policy",
     ]
     for prompt in quick_prompts:
         if st.button(prompt, use_container_width=True):
             st.session_state.user_query_text = prompt
+            st.session_state.quick_prompt_triggered = True
+            st.rerun()
 
     st.subheader("Loaded Policies")
 
     if st.session_state.loaded_sources:
+        policy_country_map = {
+            policy: extract_country_from_source(policy)
+            for policy in st.session_state.loaded_sources
+        }
+        available_countries = sorted(
+            {
+                country
+                for country in policy_country_map.values()
+                if country != "Uncategorized"
+            }
+        )
+        country_options = ["All Countries"] + sorted(
+            set(COUNTRY_OPTIONS).union(available_countries)
+        )
+
+        if st.session_state.selected_country not in country_options:
+            st.session_state.selected_country = "All Countries"
+
+        st.selectbox("Country", options=country_options, key="selected_country")
         policy_filter = st.text_input("Filter policies")
         visible_policies = sorted(st.session_state.loaded_sources)
+
+        if st.session_state.selected_country != "All Countries":
+            visible_policies = [
+                p
+                for p in visible_policies
+                if policy_country_map.get(p) == st.session_state.selected_country
+            ]
+
         if policy_filter.strip():
             visible_policies = [
                 p
@@ -575,7 +755,10 @@ with st.form("query_form", clear_on_submit=False):
 # =========================
 # ✅ QUERY HANDLING
 # =========================
-if submitted:
+quick_prompt_triggered = st.session_state.get("quick_prompt_triggered", False)
+if submitted or quick_prompt_triggered:
+    if quick_prompt_triggered:
+        st.session_state.quick_prompt_triggered = False
     user_query = st.session_state.user_query_text
     if user_query.strip():
         # # ✅ LAZY LOAD (ONLY FIRST TIME)
@@ -586,7 +769,12 @@ if submitted:
 
         # ✅ RUN AGENT
         with st.spinner("Thinking..."):
-            response, source = agent_run(user_query)
+            response, source = agent_run(
+                user_query,
+                country_filter=st.session_state.get(
+                    "selected_country", "All Countries"
+                ),
+            )
 
         # ✅ VARIATION LOGIC
         if source != "API_CALL":

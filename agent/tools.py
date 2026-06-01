@@ -19,9 +19,73 @@ CACHE_HITS = 0
 API_CALLS = 0
 
 STOP_TERMS = {
-    "the", "a", "an", "and", "or", "for", "to", "of", "in", "on", "with",
-    "what", "is", "are", "can", "you", "please", "tell", "me", "about"
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "for",
+    "to",
+    "of",
+    "in",
+    "on",
+    "with",
+    "what",
+    "is",
+    "are",
+    "can",
+    "you",
+    "please",
+    "tell",
+    "me",
+    "about",
 }
+
+COUNTRY_ALIASES = {
+    "canada": ["canada", "acnanda", "ca"],
+    "usa": ["usa", "us", "united states", "america"],
+    "india": ["india", "in"],
+    "japan": ["japan", "jp"],
+    "netherlands": ["netherlands", "neterland", "holland", "nl"],
+    "uk": ["uk", "united kingdom", "britain", "gb"],
+    "germany": ["germany", "de"],
+    "singapore": ["singapore", "sg"],
+    "australia": ["australia", "au"],
+}
+
+
+def normalize_scope_label(scope_value):
+    if not scope_value:
+        return "all"
+
+    normalized = "".join(
+        ch.lower() if ch.isalnum() else "_" for ch in str(scope_value).strip()
+    )
+    normalized = "_".join(part for part in normalized.split("_") if part)
+    return normalized or "all"
+
+
+def source_matches_country(source, country_filter):
+    if not country_filter or str(country_filter).strip().lower() == "all countries":
+        return True
+
+    source_norm = " ".join(
+        (source or "")
+        .lower()
+        .replace("\\", " ")
+        .replace("/", " ")
+        .replace("_", " ")
+        .replace("-", " ")
+        .split()
+    )
+    country_norm = " ".join(
+        str(country_filter).lower().replace("_", " ").replace("-", " ").split()
+    )
+    if not country_norm:
+        return False
+
+    aliases = COUNTRY_ALIASES.get(country_norm, [country_norm])
+    return any(alias in source_norm for alias in aliases)
 
 
 def set_vector_db(db):
@@ -51,7 +115,7 @@ def normalize_query(query):
         "steps": "checklist",
         "procedure": "checklist",
         "mail": "email",
-        "draft": "email"
+        "draft": "email",
     }
 
     for k, v in replacements.items():
@@ -62,7 +126,7 @@ def normalize_query(query):
         q = q.replace(f, "")
 
     # ✅ CRITICAL FIX
-    q = " ".join(q.split())   # removes extra spaces
+    q = " ".join(q.split())  # removes extra spaces
 
     return q
 
@@ -100,16 +164,18 @@ def find_similar_query(query, intent, threshold=0.60):
 def store_semantic_cache(query, response, intent):
     query = normalize_query(query)
 
-    SEMANTIC_CACHE.append({
-        "query": query,
-        "embedding": embed_text(query),
-        "response": response,
-        "intent": intent
-    })
+    SEMANTIC_CACHE.append(
+        {
+            "query": query,
+            "embedding": embed_text(query),
+            "response": response,
+            "intent": intent,
+        }
+    )
 
 
 # ✅ Search policies
-def search_policies(query):
+def search_policies(query, country_filter="All Countries"):
     db = shared_store.vector_db
 
     if db.index is None or db.index.ntotal == 0:
@@ -122,6 +188,11 @@ def search_policies(query):
     # Pull a wider candidate set and rerank to avoid unrelated policy bleed.
     k = min(40, db.index.ntotal)
     results = db.search(query_vector, k=k)
+    results = [
+        item
+        for item in results
+        if source_matches_country(item.get("source"), country_filter)
+    ]
 
     leave_intent = any(t in normalized_query for t in ("leave", "holiday", "lta"))
     if leave_intent:
@@ -129,7 +200,11 @@ def search_policies(query):
         seeded = {}
         for item in db.items:
             src = (item.get("source") or "").lower()
-            if any(t in src for t in ("leave", "holiday", "lta")) and src not in seeded:
+            if (
+                any(t in src for t in ("leave", "holiday", "lta"))
+                and src not in seeded
+                and source_matches_country(item.get("source"), country_filter)
+            ):
                 seeded[src] = item
         if seeded:
             results.extend(seeded.values())
@@ -165,7 +240,7 @@ def search_policies(query):
     max_sources = 2 if leave_intent else 3
 
     for item in ranked:
-        src = item.get('source')
+        src = item.get("source")
         if src and src not in seen:
             unique.append(item)
             seen.add(src)
@@ -187,23 +262,20 @@ def get_cost_savings():
 
 # ✅ Vary response (KEEP SINGLE VERSION)
 def vary_response(response):
-    styles = [
-        response,
-        "👉 " + response,
-        "📌 " + response
-    ]
+    styles = [response, "👉 " + response, "📌 " + response]
     return random.choice(styles)
 
 
 # ✅ Generate answer
-def generate_answer(context, query):
+def generate_answer(context, query, cache_scope="all"):
     global TOTAL_QUERIES, CACHE_HITS, API_CALLS
 
     auto_clear_cache()
     TOTAL_QUERIES += 1
 
     normalized = normalize_query(query)
-    cache_key = f"ANSWER::{normalized}"
+    scope = normalize_scope_label(cache_scope)
+    cache_key = f"ANSWER::{scope}::{normalized}"
 
     print("\n🔎 Query:", query)
 
@@ -214,7 +286,7 @@ def generate_answer(context, query):
         return RESPONSE_CACHE[cache_key], "EXACT_CACHE"
 
     # ✅ Semantic cache
-    semantic = find_similar_query(query, "ANSWER")
+    semantic = find_similar_query(query, f"ANSWER::{scope}")
     if semantic:
         CACHE_HITS += 1
         print("✅ Semantic cache HIT")
@@ -257,28 +329,29 @@ Grounding and safety:
     print("✅ API DONE")
 
     RESPONSE_CACHE[cache_key] = response
-    store_semantic_cache(query, response, "ANSWER")
+    store_semantic_cache(query, response, f"ANSWER::{scope}")
 
     return response, "API_CALL"
 
 
 # ✅ Checklist
-def create_checklist(context, query):
+def create_checklist(context, query, cache_scope="all"):
     global TOTAL_QUERIES, CACHE_HITS, API_CALLS
 
     auto_clear_cache()
     TOTAL_QUERIES += 1
     normalized = normalize_query(query)
-    cache_key = f"CHECKLIST::{normalized}"
+    scope = normalize_scope_label(cache_scope)
+    cache_key = f"CHECKLIST::{scope}::{normalized}"
 
     if cache_key in RESPONSE_CACHE:
-        CACHE_HITS += 1 
+        CACHE_HITS += 1
         return RESPONSE_CACHE[cache_key], "EXACT_CACHE"
-    
+
     normalized = normalize_query(query)
-    semantic = find_similar_query(query, "CHECKLIST")
+    semantic = find_similar_query(query, f"CHECKLIST::{scope}")
     if semantic:
-        CACHE_HITS += 1 
+        CACHE_HITS += 1
         return semantic, "SEMANTIC_CACHE"
 
     if not context:
@@ -290,25 +363,26 @@ def create_checklist(context, query):
     API_CALLS += 1
 
     RESPONSE_CACHE[cache_key] = response
-    store_semantic_cache(query, response, "CHECKLIST")
+    store_semantic_cache(query, response, f"CHECKLIST::{scope}")
 
     return response, "API_CALL"
 
 
 # ✅ Email
-def draft_email(context, query):
+def draft_email(context, query, cache_scope="all"):
     global TOTAL_QUERIES, CACHE_HITS, API_CALLS
 
     auto_clear_cache()
     TOTAL_QUERIES += 1
     normalized = normalize_query(query)
-    cache_key = f"EMAIL::{normalized}"
+    scope = normalize_scope_label(cache_scope)
+    cache_key = f"EMAIL::{scope}::{normalized}"
 
     if cache_key in RESPONSE_CACHE:
-        CACHE_HITS += 1 
+        CACHE_HITS += 1
         return RESPONSE_CACHE[cache_key], "EXACT_CACHE"
 
-    semantic = find_similar_query(query, "EMAIL")
+    semantic = find_similar_query(query, f"EMAIL::{scope}")
     if semantic:
         CACHE_HITS += 1
         return semantic, "SEMANTIC_CACHE"
@@ -316,15 +390,18 @@ def draft_email(context, query):
     if not context:
         return "⚠️ No policy content", "API_CALL"
 
-    prompt = "Write short professional email:\n" + "\n\n".join(c["text"] for c in context)
+    prompt = "Write short professional email:\n" + "\n\n".join(
+        c["text"] for c in context
+    )
 
     response = chat_with_context(prompt, query)
     API_CALLS += 1
 
     RESPONSE_CACHE[cache_key] = response
-    store_semantic_cache(query, response, "EMAIL")
+    store_semantic_cache(query, response, f"EMAIL::{scope}")
 
     return response, "API_CALL"
+
 
 def rephrase_response(text):
     prompt = f"""
@@ -350,8 +427,8 @@ def simulate_email_send(recipients, subject, body, channel="UI_SIMULATOR"):
                 "channel": channel,
                 "recipient_count": 0,
                 "subject": subject,
-                "timestamp": datetime.utcnow().isoformat() + "Z"
-            }
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+            },
         }
 
     fake_id = f"SIM-{int(time.time())}-{len(cleaned)}"
@@ -365,6 +442,6 @@ def simulate_email_send(recipients, subject, body, channel="UI_SIMULATOR"):
             "recipients": cleaned,
             "subject": subject,
             "body_preview": body[:180],
-            "timestamp": datetime.utcnow().isoformat() + "Z"
-        }
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+        },
     }
