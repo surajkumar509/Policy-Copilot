@@ -213,6 +213,17 @@ def inject_enterprise_theme():
                 font-family: 'IBM Plex Sans', sans-serif;
             }
 
+            #MainMenu {
+                visibility: hidden;
+            }
+
+            [data-testid='stHeader'],
+            [data-testid='stToolbar'],
+            [data-testid='stStatusWidget'],
+            [data-testid='stDecoration'] {
+                display: none;
+            }
+
             .main .block-container {
                 padding-top: 1.5rem;
                 padding-bottom: 2rem;
