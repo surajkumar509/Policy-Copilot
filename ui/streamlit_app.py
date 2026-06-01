@@ -611,7 +611,7 @@ inject_enterprise_theme()
 st.markdown(
     """
     <div class="hero-shell">
-        <div class="hero-title">Enterprise Trial Management Copilot</div>
+        <div class="hero-title">Compliance Checklist Copilot</div>
         <p class="hero-sub">Enterprise-grade assistant for policy Q&A, checklist automation, and communication workflows.</p>
     </div>
     """,
