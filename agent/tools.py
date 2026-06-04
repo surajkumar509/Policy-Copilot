@@ -105,7 +105,40 @@ def auto_clear_cache():
 
 
 # ✅ Normalize query
+import re
+
+
 def normalize_query(query):
+    q = query.lower()
+
+    # ✅ Handle checklist variations (generic + flexible)
+    q = re.sub(r"check\s*-?\s*l\s*i\s*s\s*t", "checklist", q, flags=re.IGNORECASE)
+
+    # ✅ Synonym replacements (use regex word boundaries to avoid partial issues)
+    replacements = {
+        r"\bsteps\b": "checklist",
+        r"\bprocedure\b": "checklist",
+        r"\bmail\b": "email",
+        r"\bdraft\b": "email",
+    }
+
+    for pattern, replacement in replacements.items():
+        q = re.sub(pattern, replacement, q)
+
+    # ✅ Remove filler phrases (more robust)
+    fillers = [r"\bplease\b", r"\bcan you\b", r"\btell me\b", r"\bhow to\b"]
+
+    for f in fillers:
+        q = re.sub(f, "", q)
+
+    # ✅ Remove special characters (optional but recommended)
+    q = re.sub(r"[^\w\s]", " ", q)
+
+    # ✅ Normalize spaces (CRITICAL)
+    q = " ".join(q.split())
+
+    return q
+
     q = query.lower()
 
     # unify
