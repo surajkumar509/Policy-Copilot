@@ -818,8 +818,13 @@ if st.session_state.last_response:
     )
 
     normalized_query = tools.normalize_query(user_query)
+    original_query_lower = user_query.lower()
 
-    if "checklist" in normalized_query:
+    # ── Intent detection mirrors agent.py priority: email > checklist > answer ──
+    is_email_intent = any(w in original_query_lower for w in ("draft", "email", "mail"))
+    is_checklist_intent = (not is_email_intent) and ("checklist" in normalized_query)
+
+    if is_checklist_intent:
         st.markdown("### Download Checklist")
         st.radio(
             "Would you like to download this checklist?",
@@ -884,7 +889,7 @@ if st.session_state.last_response:
                     mime=st.session_state.download_mime,
                 )
 
-    if "email" in normalized_query:
+    if is_email_intent:
         st.markdown("### Email Simulation (No Real Send)")
         suggested_subject, suggested_body = parse_email_subject_and_body(
             response, user_query
