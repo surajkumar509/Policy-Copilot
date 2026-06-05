@@ -3,7 +3,9 @@ import os
 from dotenv import load_dotenv
 
 # ✅ Setup path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 load_dotenv()
 
 import random
@@ -87,6 +89,18 @@ if "user_query_text" not in st.session_state:
 
 if "selected_country" not in st.session_state:
     st.session_state.selected_country = "All Countries"
+
+if "task_mode" not in st.session_state:
+    st.session_state.task_mode = "Smart Policy Mode"
+
+if "website_analysis_url" not in st.session_state:
+    st.session_state.website_analysis_url = ""
+
+if "website_analysis_max_pages" not in st.session_state:
+    st.session_state.website_analysis_max_pages = 8
+
+if "website_use_pasted_only" not in st.session_state:
+    st.session_state.website_use_pasted_only = False
 
 COUNTRY_ALIASES = {
     "Canada": ["canada", "acnanda", "ca"],
@@ -739,16 +753,43 @@ st.markdown(
 # =========================
 # ✅ USER INPUT FORM
 # =========================
-with st.form("query_form", clear_on_submit=False):
-    st.markdown(
-        '<div class="query-chip">Policy Query Assistant</div>',
-        unsafe_allow_html=True,
+st.markdown(
+    '<div class="query-chip">Policy Query Assistant</div>',
+    unsafe_allow_html=True,
+)
+st.selectbox(
+    "Task Mode",
+    options=["Smart Policy Mode", "Website URL Analysis"],
+    key="task_mode",
+)
+
+if st.session_state.task_mode == "Website URL Analysis":
+    st.info(
+        "Paste a public website URL. For private/login pages, enable pasted-content-only and paste page text into Ask a policy question."
     )
+    st.checkbox(
+        "Use pasted content only (ignore URL)",
+        key="website_use_pasted_only",
+    )
+    st.text_input(
+        "Website URL",
+        key="website_analysis_url",
+        placeholder="https://example.com",
+        disabled=st.session_state.get("website_use_pasted_only", False),
+    )
+    st.slider(
+        "Max pages to scan",
+        min_value=1,
+        max_value=20,
+        key="website_analysis_max_pages",
+    )
+
+with st.form("query_form", clear_on_submit=False):
     st.text_area(
         "Ask a policy question",
         key="user_query_text",
         height=130,
-        placeholder="Type a policy question, checklist request, or an email drafting task...",
+        placeholder="Type your analysis request...",
     )
     submitted = st.form_submit_button("Run Policy Analysis", use_container_width=True)
 
@@ -769,12 +810,57 @@ if submitted or quick_prompt_triggered:
 
         # ✅ RUN AGENT
         with st.spinner("Thinking..."):
-            response, source = agent_run(
-                user_query,
-                country_filter=st.session_state.get(
-                    "selected_country", "All Countries"
-                ),
-            )
+            current_mode = st.session_state.get("task_mode", "Smart Policy Mode")
+            country_filter = st.session_state.get("selected_country", "All Countries")
+            original_query_lower = user_query.lower()
+            normalized_query = tools.normalize_query(user_query)
+
+            try:
+                # Enforce explicit task routing in Smart Policy Mode.
+                if current_mode == "Smart Policy Mode" and any(
+                    w in original_query_lower for w in ("draft", "email", "mail")
+                ):
+                    context = tools.search_policies(
+                        user_query, country_filter=country_filter
+                    )
+                    response, source = tools.draft_email(
+                        context, user_query, cache_scope=country_filter
+                    )
+                elif (
+                    current_mode == "Smart Policy Mode"
+                    and "checklist" in normalized_query
+                ):
+                    context = tools.search_policies(
+                        user_query, country_filter=country_filter
+                    )
+                    response, source = tools.create_checklist(
+                        context, user_query, cache_scope=country_filter
+                    )
+                elif current_mode == "Website URL Analysis":
+                    effective_url = ""
+                    if not st.session_state.get("website_use_pasted_only", False):
+                        effective_url = st.session_state.get("website_analysis_url", "")
+                    response, source = tools.analyze_website_url(
+                        effective_url,
+                        user_query,
+                        max_pages=st.session_state.get("website_analysis_max_pages", 8),
+                    )
+                else:
+                    response, source = agent_run(
+                        user_query,
+                        country_filter=country_filter,
+                        task_mode=current_mode,
+                        website_url=st.session_state.get("website_analysis_url", ""),
+                        website_max_pages=st.session_state.get(
+                            "website_analysis_max_pages", 8
+                        ),
+                    )
+            except RuntimeError as e:
+                if current_mode == "Website URL Analysis":
+                    response = f"⚠️ Website analysis failed: {e}"
+                    source = "API_CALL"
+                else:
+                    raise
 
         # ✅ VARIATION LOGIC
         if source != "API_CALL":
@@ -819,10 +905,17 @@ if st.session_state.last_response:
 
     normalized_query = tools.normalize_query(user_query)
     original_query_lower = user_query.lower()
+    current_mode = st.session_state.get("task_mode", "Smart Policy Mode")
 
     # ── Intent detection mirrors agent.py priority: email > checklist > answer ──
-    is_email_intent = any(w in original_query_lower for w in ("draft", "email", "mail"))
-    is_checklist_intent = (not is_email_intent) and ("checklist" in normalized_query)
+    is_email_intent = (current_mode == "Smart Policy Mode") and any(
+        w in original_query_lower for w in ("draft", "email", "mail")
+    )
+    is_checklist_intent = (
+        (current_mode == "Smart Policy Mode")
+        and (not is_email_intent)
+        and ("checklist" in normalized_query)
+    )
 
     if is_checklist_intent:
         st.markdown("### Download Checklist")

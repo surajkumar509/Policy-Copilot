@@ -1,6 +1,7 @@
 from rag.azure_embeddings import embed_text
 import rag.shared_store as shared_store
 from rag.azure_chat import chat_with_context
+from rag.web_loader import crawl_site_documents
 import numpy as np
 import time
 import random
@@ -432,6 +433,221 @@ def draft_email(context, query, cache_scope="all"):
 
     RESPONSE_CACHE[cache_key] = response
     store_semantic_cache(query, response, f"EMAIL::{scope}")
+
+    return response, "API_CALL"
+
+
+def analyze_compliance(context, query, cache_scope="all"):
+    global TOTAL_QUERIES, CACHE_HITS, API_CALLS
+
+    auto_clear_cache()
+    TOTAL_QUERIES += 1
+    normalized = normalize_query(query)
+    scope = normalize_scope_label(cache_scope)
+    cache_key = f"COMPLIANCE::{scope}::{normalized}"
+
+    if cache_key in RESPONSE_CACHE:
+        CACHE_HITS += 1
+        return RESPONSE_CACHE[cache_key], "EXACT_CACHE"
+
+    semantic = find_similar_query(query, f"COMPLIANCE::{scope}")
+    if semantic:
+        CACHE_HITS += 1
+        return semantic, "SEMANTIC_CACHE"
+
+    if not context:
+        return (
+            "⚠️ Compliance mode needs policy context, but no relevant policies were found.",
+            "API_CALL",
+        )
+
+    context_text = "\n\n".join([f"{c['source']}\n{c['text']}" for c in context])
+
+    prompt = f"""
+You are a strict policy compliance validator. Use only provided policy context.
+
+User request:
+{query}
+
+Return sections in this exact order:
+1) Compliance Verdict: APPROVED / PARTIAL / NOT APPROVED
+2) Compliance Score: number from 0 to 100
+3) Grounding From Policies: bullet points with policy file names and exact relevant conditions
+4) Risks or Violations: bullet points
+5) Required Next Actions: numbered list
+
+Rules:
+- Do not invent policy rules.
+- If data is missing, explicitly say what is missing.
+- Keep answer practical and audit-ready.
+- End with one line: Source: <comma-separated policy file names used>
+""".strip()
+
+    response = chat_with_context(context_text, prompt)
+    API_CALLS += 1
+
+    RESPONSE_CACHE[cache_key] = response
+    store_semantic_cache(query, response, f"COMPLIANCE::{scope}")
+
+    return response, "API_CALL"
+
+
+def analyze_website_url(url, query, max_pages=8, pasted_content=""):
+    global TOTAL_QUERIES, CACHE_HITS, API_CALLS
+
+    auto_clear_cache()
+    TOTAL_QUERIES += 1
+
+    normalized_query = normalize_query(query)
+    normalized_url = (url or "").strip().lower()
+    raw_query = (query or "").strip()
+    raw_pasted_content = (pasted_content or "").strip()
+
+    auth_hints = (
+        "sharepoint.com",
+        "login.microsoftonline.com",
+        "accounts.google.com",
+        "okta",
+        "auth",
+        "signin",
+    )
+
+    if any(hint in normalized_url for hint in auth_hints):
+        return (
+            "⚠️ This URL appears to require authentication (SharePoint/login). "
+            "Please provide public URL or pasted content.",
+            "API_CALL",
+        )
+
+    cache_key = (
+        f"WEB_ANALYSIS::{normalized_url}::{max_pages}::{normalized_query}::"
+        f"{len(raw_pasted_content)}"
+    )
+
+    if cache_key in RESPONSE_CACHE:
+        CACHE_HITS += 1
+        return RESPONSE_CACHE[cache_key], "EXACT_CACHE"
+
+    if raw_pasted_content:
+        prompt = f"""
+You are a web content analyst.
+
+User question:
+{query}
+
+Analyze the pasted webpage content and return sections:
+1) Executive Summary
+2) Key Findings
+3) Important Details
+4) Risks, Gaps, or Contradictions
+5) Recommended Actions
+
+Rules:
+- Ground statements only in the pasted content.
+- If details are missing, state what is missing.
+- Keep concise but specific.
+- End with one line: Source: Pasted Content
+""".strip()
+
+        response = chat_with_context(raw_pasted_content[:14000], prompt)
+        API_CALLS += 1
+        response = "Scanned pages: 0 (pasted content)\n\n" + response
+
+        RESPONSE_CACHE[cache_key] = response
+        store_semantic_cache(
+            f"PASTED::{raw_query[:120]}::{raw_pasted_content[:120]}",
+            response,
+            "WEB_ANALYSIS::PASTED",
+        )
+        return response, "API_CALL"
+
+    if not (url or "").strip():
+        # Allow direct content analysis when the user pastes webpage text
+        # into the question box instead of providing a public URL.
+        if len(raw_query) < 120:
+            return (
+                "⚠️ Please paste a public website URL, or paste more webpage content for analysis.",
+                "API_CALL",
+            )
+
+        prompt = """
+You are a web content analyst.
+
+Analyze the pasted webpage content and return sections:
+1) Executive Summary
+2) Key Findings
+3) Important Details
+4) Risks, Gaps, or Contradictions
+5) Recommended Actions
+
+Rules:
+- Ground statements only in the pasted content.
+- If details are missing, state what is missing.
+- Keep concise but specific.
+- End with one line: Source: Pasted Content
+""".strip()
+
+        response = chat_with_context(raw_query[:14000], prompt)
+        API_CALLS += 1
+        response = "Scanned pages: 0 (pasted content)\n\n" + response
+
+        RESPONSE_CACHE[cache_key] = response
+        store_semantic_cache(
+            f"PASTED::{raw_query[:200]}", response, "WEB_ANALYSIS::PASTED"
+        )
+        return response, "API_CALL"
+
+    try:
+        docs = crawl_site_documents(url, max_pages=max_pages)
+    except RuntimeError as e:
+        return f"⚠️ Website analysis failed: {e}", "API_CALL"
+    except Exception:
+        return (
+            "⚠️ Website analysis failed due to an unexpected error while reading pages.",
+            "API_CALL",
+        )
+
+    if not docs:
+        return "⚠️ No readable HTML content found on that URL.", "API_CALL"
+
+    source_names = [d.get("source", "") for d in docs]
+    compact_context = []
+    for d in docs:
+        snippet = (d.get("text") or "")[:2400]
+        compact_context.append(f"{d.get('source', 'web-page')}\n{snippet}")
+    context_text = "\n\n".join(compact_context)
+
+    prompt = f"""
+You are a web content analyst.
+
+User question:
+{query}
+
+Analyze only the provided website page text context.
+Return sections:
+1) Executive Summary
+2) Key Findings
+3) Important Details
+4) Risks, Gaps, or Contradictions
+5) Recommended Actions
+
+Rules:
+- Ground statements in the provided page text only.
+- Mention when website data is insufficient.
+- Keep concise but specific.
+- End with one line: Source: <comma-separated crawled URLs>
+""".strip()
+
+    response = chat_with_context(context_text, prompt)
+    API_CALLS += 1
+    response = f"Scanned pages: {len(docs)}\n\n{response}"
+
+    RESPONSE_CACHE[cache_key] = response
+    store_semantic_cache(
+        f"{url} :: {query}",
+        response,
+        f"WEB_ANALYSIS::{max(1, min(int(max_pages), 25))}",
+    )
 
     return response, "API_CALL"
 
